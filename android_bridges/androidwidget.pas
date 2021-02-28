@@ -1346,6 +1346,7 @@ type
     procedure MoveToBack();
     //the "guide line' is try to mimic java Api ...
     procedure MoveTaskToBack(_nonRoot: boolean);
+    procedure MoveTaskToFront();
 
     procedure Restart(_delay: integer);
     procedure HideSoftInput(_view: jObject); overload;
@@ -1439,6 +1440,7 @@ type
 
     function IsExternalStorageReadWriteAvailable(): boolean;
     function IsExternalStorageReadable(): boolean;
+
 
     // Property            FjRLayout
     property View         : jObject        read FjRLayout; //layout!
@@ -1686,9 +1688,9 @@ end;
   function jForm_UriToString(env: PJNIEnv; _jform: JObject; _uri: jObject): string;
 
   function jForm_GetRealPathFromURI(env: PJNIEnv; _jform: JObject; _Uri: jObject): string;
-
   function jForm_IsExternalStorageReadWriteAvailable(env: PJNIEnv; _jform: JObject): boolean;
   function jForm_IsExternalStorageReadable(env: PJNIEnv; _jform: JObject): boolean;
+
 
 //jni API Bridge
 // http://docs.oracle.com/javase/7/docs/technotes/guides/jni/spec/functions.html
@@ -1805,6 +1807,7 @@ procedure View_AddLParamsParentRule   (env:PJNIEnv; _jobject : jObject; rule: DW
 procedure View_AddLParamsAnchorRule   (env:PJNIEnv; _jobject : jObject; rule: DWord);
 procedure View_SetLGravity            (env: PJNIEnv; _jobject: JObject; _value: integer);
 procedure View_SetLWeight             (env: PJNIEnv; _jobject: JObject; _w: single);
+procedure View_SetParent              (env:PJNIEnv; _jobject : jObject; ViewGroup : jObject);
 procedure View_SetVisible             (env:PJNIEnv;this:jobject; view : jObject; visible : Boolean); overload;
 
 procedure View_SetLParamHeight        (env:PJNIEnv; _jobject : jObject; h: DWord);
@@ -1819,10 +1822,6 @@ procedure View_ClearLayoutAll         (env: PJNIEnv; _jobject : JObject);
 procedure View_SetVisible             (env:PJNIEnv; view: jObject; visible : Boolean); overload;
 function  View_GetVisible             (env:PJNIEnv; view: jObject): boolean;
 
-function  View_GetView                (env: PJNIEnv; view: JObject): jObject;
-function  View_GetViewGroup           (env: PJNIEnv; view : jObject): jObject;
-function  View_GetParent              (env: PJNIEnv; view: JObject): jObject;
-
 procedure View_SetId                  (env:PJNIEnv; view : jObject; Id :DWord);
 
 procedure View_SetLeftTopRightBottomWidthHeight(env: PJNIEnv; _jobject: JObject; _left, _top, _right, _bottom, _width, _height: integer);
@@ -1835,8 +1834,6 @@ procedure View_Invalidate             (env:PJNIEnv; view : jObject); overload;
 procedure View_PostInvalidate         (env:PJNIEnv; view : jObject);
 
 procedure View_BringToFront           (env:PJNIEnv; view : jObject);
-procedure View_SetViewParent          (env: PJNIEnv; view: JObject; _viewgroup: jObject);
-procedure View_RemoveFromViewParent   (env: PJNIEnv; view: JObject);
 
 // System Info
 Function  jSysInfo_ScreenWH            (env:PJNIEnv;this:jobject;context : jObject) : TWH;
@@ -4484,6 +4481,13 @@ begin
      jForm_MoveTaskToBack(FjEnv, FjObject, _nonRoot);
 end;
 
+procedure jForm.MoveTaskToFront();
+begin
+  //in designing component state: set value here...
+  if FInitialized then
+     jni_proc(FjEnv, FjObject, 'MoveTaskToFront');
+end;
+
 procedure jForm.Restart(_delay: integer);
 begin
   //in designing component state: set value here...
@@ -4832,8 +4836,6 @@ begin
      jForm_RunOnUiThread(FjEnv, FjObject, _tag);
 end;
 
-{-------- jForm_JNI_Bridge ----------}
-
 function jForm.IsExternalStorageReadWriteAvailable(): boolean;
 begin
   //in designing component state: result value here...
@@ -4852,6 +4854,8 @@ procedure jForm.GenEvent_OnRunOnUiThread(Sender:TObject;tag:integer);
 begin
   if Assigned(FOnRunOnUiThread) then FOnRunOnUiThread(Sender,tag);
 end;
+
+{-------- jForm_JNI_Bridge ----------}
 
 function jForm_GetImageFromAssetsFile(env: PJNIEnv; _jform: JObject; _assetsImageFileName: string): jObject;
 var
@@ -4881,6 +4885,17 @@ begin
   env^.DeleteLocalRef(env, jCls);
 end;
 
+procedure jForm_CancelShowCustomMessage(env: PJNIEnv; _jform: JObject);
+var
+  jMethod: jMethodID=nil;
+  jCls: jClass=nil;
+begin
+  jCls:= env^.GetObjectClass(env, _jform);
+  jMethod:= env^.GetMethodID(env, jCls, 'CancelShowCustomMessage', '()V');
+  env^.CallVoidMethod(env, _jform, jMethod);
+  env^.DeleteLocalRef(env, jCls);
+end;
+
 procedure jForm_ShowCustomMessage(env: PJNIEnv; _jform: JObject; _layout: jObject; _gravity: integer; _lenghTimeSecond: integer);
 var
   jParams: array[0..2] of jValue;
@@ -4896,16 +4911,6 @@ begin
   env^.DeleteLocalRef(env, jCls);
 end;
 
-procedure jForm_CancelShowCustomMessage(env: PJNIEnv; _jform: JObject);
-var
-  jMethod: jMethodID=nil;
-  jCls: jClass=nil;
-begin
-  jCls:= env^.GetObjectClass(env, _jform);
-  jMethod:= env^.GetMethodID(env, jCls, 'CancelShowCustomMessage', '()V');
-  env^.CallVoidMethod(env, _jform, jMethod);
-  env^.DeleteLocalRef(env, jCls);
-end;
 
 function jForm_GetStringExtra(env: PJNIEnv; _jform: JObject; intentData: jObject; extraName: string): string;
 var
@@ -5460,7 +5465,7 @@ var
   jMethod: jMethodID=nil;
   jCls: jClass=nil;
 begin
- jCls:= env^.GetObjectClass(env, _jform);
+  jCls:= env^.GetObjectClass(env, _jform);
   jMethod:= env^.GetMethodID(env, jCls, 'IsExternalStorageReadWriteAvailable', '()Z');
   jBoo:= env^.CallBooleanMethod(env, _jform, jMethod);
   Result:= boolean(jBoo);
@@ -5480,6 +5485,7 @@ begin
   Result:= boolean(jBoo);
   env^.DeleteLocalRef(env, jCls);
 end;
+
 
 //-----{ jApp } ------
 
@@ -6949,6 +6955,19 @@ begin
  env^.DeleteLocalRef(env, cls);
 end;
 
+procedure View_SetParent(env:PJNIEnv; _jobject : jObject; ViewGroup : jObject);
+ var
+  _jMethod : jMethodID = nil;
+  _jParams : array[0..0] of jValue;
+  cls: jClass;
+ begin
+  _jParams[0].l := ViewGroup;
+  cls := env^.GetObjectClass(env, _jobject);
+  _jMethod:= env^.GetMethodID(env, cls, 'SetViewParent', '(Landroid/view/ViewGroup;)V');
+  env^.CallVoidMethodA(env, _jobject,_jMethod,@_jParams);
+  env^.DeleteLocalRef(env, cls);
+ end;
+
 Procedure View_SetId(env:PJNIEnv; view : jObject; Id :DWord);
 var
   method: jmethodID;
@@ -7116,63 +7135,6 @@ begin
  _jMethod:= env^.GetMethodID(env, cls, 'BringToFront', '()V');
  env^.CallVoidMethod(env,view,_jMethod);
  env^.DeleteLocalRef(env, cls);
-end;
-
-procedure View_SetViewParent(env: PJNIEnv; view: JObject; _viewgroup: jObject);
-var
-  jParams: array[0..0] of jValue;
-  jMethod: jMethodID=nil;
-  jCls: jClass=nil;
-begin
-  jParams[0].l:= _viewgroup;
-  jCls:= env^.GetObjectClass(env, view);
-  jMethod:= env^.GetMethodID(env, jCls, 'SetViewParent', '(Landroid/view/ViewGroup;)V');
-  env^.CallVoidMethodA(env, view, jMethod, @jParams);
-  env^.DeleteLocalRef(env, jCls);
-end;
-
-procedure View_RemoveFromViewParent(env: PJNIEnv; view: JObject);
-var
-  jMethod: jMethodID=nil;
-  jCls: jClass=nil;
-begin
-  jCls:= env^.GetObjectClass(env, view);
-  jMethod:= env^.GetMethodID(env, jCls, 'RemoveFromViewParent', '()V');
-  env^.CallVoidMethod(env, view, jMethod);
-  env^.DeleteLocalRef(env, jCls);
-end;
-
-function View_GetView(env: PJNIEnv; view: JObject): jObject;
-var
-     jMethod: jMethodID = nil;
-     jCls: jClass = nil;
-begin
-     jCls := env^.GetObjectClass(env, view);
-     jMethod := env^.GetMethodID(env, jCls, 'GetView', '()Landroid/view/View;');
-     Result := env^.CallObjectMethod(env, view, jMethod);
-     env^.DeleteLocalRef(env, jCls);
-end;
-
-function View_GetViewGroup(env:PJNIEnv; view : jObject) : jObject;
-var
-  _jMethod : jMethodID = nil;
-  cls: jClass;
-begin
-   cls := env^.GetObjectClass(env, view);
- _jMethod:= env^.GetMethodID(env, cls, 'GetView', '()Landroid/view/ViewGroup;'); //Landroid/widget/RelativeLayout;
-  Result := env^.CallObjectMethod(env, view,_jMethod);
-  env^.DeleteLocalRef(env, cls);
-end;
-
-function View_GetParent(env: PJNIEnv; view: JObject): jObject;
-var
-  jMethod: jMethodID=nil;
-  jCls: jClass=nil;
-begin
-  jCls:= env^.GetObjectClass(env, view);
-  jMethod:= env^.GetMethodID(env, jCls, 'GetParent', '()Landroid/view/ViewGroup;');
-  Result:= env^.CallObjectMethod(env, view, jMethod);
-  env^.DeleteLocalRef(env, jCls);
 end;
 
 //------------------------------------------------------------------------------
